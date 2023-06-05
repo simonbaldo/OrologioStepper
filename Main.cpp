@@ -42,6 +42,11 @@
   bool cambiaCifra=false;
   unsigned int rlamp=300;
 
+  //variabili per date cambio ora solare/legale
+  uint16_t doy;
+  uint16_t sday;
+  uint16_t lday;  
+
   MyTimer tm(1000);     //imposto un timer per lo spostamento della lancetta
   MyTimer tcucu(2000); //timer per rintocchi del cuccu ogni 2 sec
 
@@ -78,6 +83,8 @@
   //prottipi delle funzioni
   void writeIntEEPROM(int);
   void displayOled(bool);
+  byte readEEPROM(int, int);
+  void writeEEPROM(int,byte,int);
 
   uint16_t getDayOfYear( const uint8_t, const uint8_t, const uint16_t);
   uint8_t getLastSundayInMonth( const uint8_t , const uint16_t);
@@ -227,6 +234,36 @@
     writeIntEEPROM(countMin);
     
     displayOled(false);
+
+    //test per cambio ora legale // solare viene eseguito un reset con il nuovo orario
+    if (hour==2) {
+      if (minute==0) {
+           if (doy==lday) {
+               hour++;
+               SetRtc(0, minute, hour, dayOfWeek, dayOfMonth,month, year);               	
+               //reset scheda
+               delay(100);
+               asm volatile (" nop "); // pausa di 62nSec
+               asm volatile (" jmp 0 "); //reset impostando il program counter all'indirizzo 0
+           }
+           else 
+           if (doy==sday) {
+              byte cambioOra = readEEPROM(2, DS3231_EEPROM_ADDRESS);
+              if (cambioOra==1) {
+                writeEEPROM(2, 0, DS3231_EEPROM_ADDRESS);
+              }
+              else {
+                 hour--;
+                 writeEEPROM(2, 1, DS3231_EEPROM_ADDRESS);
+                 SetRtc(0, minute, hour, dayOfWeek, dayOfMonth,month, year);	
+                 delay(100);
+                 asm volatile (" nop "); // pausa di 62nSec
+                 asm volatile (" jmp 0 "); //reset impostando il program counter all'indirizzo 0
+              }
+           }
+      }
+    }
+    
   }
 
   void muoviUnoStep(int dir) {
@@ -654,7 +691,7 @@
         display.setCursor(44,6);
         display.print(year);
 
-        uint16_t doy = getDayOfYear(dayOfMonth,month,year + 2000);
+        doy = getDayOfYear(dayOfMonth,month,year + 2000);
         display.setCursor(90, 2);
         sprintf(dstr, "%03d", doy);
         display.print(dstr); 
@@ -663,12 +700,12 @@
         //uint8_t solarDay = getLastSundayInMonth (10, year);
 
         display.setCursor(90, 4);
-        uint16_t lday = getDayOfYear(getLastSundayInMonth (3, year + 2000),3,year + 2000);
+        lday = getDayOfYear(getLastSundayInMonth (3, year + 2000),3,year + 2000);
         sprintf(dstr, "%03d", lday);
         display.print(dstr); 
 
         display.setCursor(90, 6);
-        uint16_t sday = getDayOfYear(getLastSundayInMonth (10, year + 2000),10,year + 2000);
+        sday = getDayOfYear(getLastSundayInMonth (10, year + 2000),10,year + 2000);
         sprintf(dstr, "%03d", sday);
         display.print(dstr);       
     }
