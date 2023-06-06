@@ -15,7 +15,10 @@
 
   #define pul1 6
   #define pul2 7
+  #define pul3 4
   #define servoPin 13
+  #define pinLuce 2
+
   SSD1306AsciiAvrI2c display;
   byte volume=28;
 
@@ -63,14 +66,17 @@
 
   //definizione pulsanti
   Pulsante p1(pul1, 3);
-  Pulsante p2(pul2, 3); 
+  Pulsante p2(pul2, 3);
+  Pulsante p3(pul3, 3); 
 
   bool lp1=false;
   bool lp2=false;
+  bool lp3=false;
   bool modImpo=false;
 
   byte pressP1=0;
   byte pressP2=0;
+  byte pressP3=0;
   byte menuImpo=0;
 
   //12 ore corrispondo a 12 x 60 = 720 minuti
@@ -295,6 +301,7 @@
     //EEPROM.write(0, countMin);    
     
   }
+
   void testPressedButton() {
     
     //la funzione released() restituisce al rilascio del pulsante i valori: 
@@ -302,14 +309,18 @@
     //1 - tasto premuto
     //2 - pressione prolungata del tasto
     
-    pressP2=p2.released();
     pressP1=p1.released();
+    pressP2=p2.released();
+    pressP3=p3.released();
 
     if (pressP1>=1) 
         lp1=true;
 
     if (pressP2>=1) 
         lp2=true;
+
+    if (pressP3>=1) 
+        lp3=true;
 
       //menuImpo = 0 Regolazione veloce lancette
       //menuImpo = 1 Regolazione by step lancette
@@ -345,7 +356,7 @@
                 display.setCursor(10,6);
                 display.print("                ");
             }          
-            if (menuImpo>=2 && menuImpo < 7) {
+            if (menuImpo>=2 && menuImpo < 8) {
               if (menuImpo==2) {
                   display.clear();
               }
@@ -355,9 +366,11 @@
               cambiaCifra=false;
             }          
             
-            if (menuImpo==7) {
+            if (menuImpo==8) {
               countMin=0;
               writeIntEEPROM(countMin);
+              delay(50);
+              writeEEPROM(4,volume, DS3231_EEPROM_ADDRESS);
               int dow;
               dow=getWeekDay(dayOfMonth,month,year);
               //getWeekDay ritorna 6=dom,0=lun, 1=mar,....5=sab, quindi rimappoi giorni per l'rtc in cui 1=dom, 2=lun...
@@ -386,6 +399,7 @@
     //menuImpo = 4 - Regolazione data aa
     //menuImpo = 5 - Regolazione data mm
     //menuImpo = 6 - Regolazione data gg
+    //menuImpo = 7 - Regolazione volume mp3 player
 
     if  (modImpo==true) {
         if (menuImpo==0) {
@@ -561,9 +575,58 @@
                     display.print("  ");
                 }   
             } 
-
         }   
-    }   
+        else 
+        if (menuImpo==7) {
+            if (pressP2>=1) {
+            volume+=2;          
+            if (volume>30)
+                volume=0;
+            }
+        
+            if ((millis() - tlamp) > rlamp) {
+                mostraCifra=!mostraCifra;  
+                tlamp=millis();
+                cambiaCifra=true;
+            }
+
+            if (cambiaCifra) {
+                cambiaCifra=false;            
+                if (mostraCifra) {
+                      if (volume>9) {                       
+                          display.setCursor(65,2);            
+                          display.print(volume);                  
+                      } 
+                      else {                    
+                          display.setCursor(65,2);            
+                          display.print("0");                  
+                          display.setCursor(65+6,2);            
+                          display.print(volume);                  
+                      }
+                }    
+                else {
+                    display.setCursor(65,2);
+                    display.print("  ");
+                }   
+            } 
+        }   
+
+
+    }
+
+    //Pressione P3 per attivazione/disattivazione cucu
+    if (!modImpo) {
+      if (lp3) {
+        lp3=false;
+        byte  EEstatoCucu = readEEPROM(3, DS3231_EEPROM_ADDRESS);
+        if (EEstatoCucu != 1)
+           writeEEPROM(3, 1, DS3231_EEPROM_ADDRESS);
+        else
+           writeEEPROM(3, 0, DS3231_EEPROM_ADDRESS);            
+        delay(50);
+        displayOled(false);   
+      }
+    }  
   }
 
   void writeEEPROM(int address, byte valore, int i2c_address){
@@ -708,7 +771,35 @@
         sday = getDayOfYear(getLastSundayInMonth (10, year + 2000),10,year + 2000);
         sprintf(dstr, "%03d", sday);
         display.print(dstr);       
-    }
+
+        //display intensità luce. Con fotoresistore 5549 luce intensa > 600, mentre quasi buio <= 5
+        display.setCursor(90,0);
+        display.print("    ");
+        display.setCursor(90,0);
+        char sluce[3];
+        sprintf(sluce, "%03d", analogRead(pinLuce));
+        display.print(sluce);
+
+        //display stato cucu attivo=1 non attivo 0
+        display.setCursor(35,0);
+        display.print("        ");
+        display.setCursor(35,0);
+        byte EEstatoCucu = readEEPROM(3, DS3231_EEPROM_ADDRESS);
+        if (EEstatoCucu != 1)         
+           display.print("Cucu off");
+        else
+           display.print("Cucu on ");
+
+        //display volume 
+        display.setCursor(35,2);
+        display.print("        ");
+        display.setCursor(35,2);
+        byte EEvolume = readEEPROM(4, DS3231_EEPROM_ADDRESS);
+        display.print("Vol. ");
+        char svol[2];
+        sprintf(svol, "%02d", EEvolume);
+        display.print(svol);
+   }
   }
   void openCucu() {
     sc.write(180);
@@ -733,6 +824,23 @@
         if (minute==0 && hour>=7 && hour<=21) {
           //controllo luminosità
             if (!startCucu ) { 
+            //controllo statoCucu
+            // statoCucu = off se premuto tasto di disattivazione P3 oppure per luce non sufficiente
+            //Lettura eprom del ds3231 per stato del cucu (cambia alla pressione di P3)
+            byte EEstatoCucu = readEEPROM(3, DS3231_EEPROM_ADDRESS);
+            if (EEstatoCucu != 1)
+                statoCucu=false;
+            else
+                statoCucu=true;
+
+            //Verifica intensità della luce. Se inferiore a 250 per fotoresistore 5506 non attivo il cucu
+            if (statoCucu==true) {
+              unsigned int iluce=analogRead(pinLuce);
+              if (iluce<=250) {
+                statoCucu=false;
+              }
+            }    
+
             if (statoCucu==true) {
               startCucu=true;
               endCucu=false;
@@ -808,8 +916,15 @@
     sc.write(0);
     delay(1000);
 
-    //inizializzazione mp3 player
-    mp3.volume(volume);
+    //inizializzazione mp3 player. Il volume viene salvato all'indirizzo 4 della EEPROM del DS3231
+    byte EEvolume = readEEPROM(4, DS3231_EEPROM_ADDRESS);
+    if (EEvolume > 30) {
+       EEvolume = 26;
+       writeEEPROM(4, EEvolume, DS3231_EEPROM_ADDRESS);
+    }
+
+    volume=EEvolume;
+    mp3.volume(EEvolume);
     mp3.play(0);
 
     //imposto timer per visualizzazione delle cifre dell'ora
