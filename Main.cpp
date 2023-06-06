@@ -368,6 +368,7 @@
             
             if (menuImpo==8) {
               countMin=0;
+              menuImpo=0;
               writeIntEEPROM(countMin);
               delay(50);
               writeEEPROM(4,volume, DS3231_EEPROM_ADDRESS);
